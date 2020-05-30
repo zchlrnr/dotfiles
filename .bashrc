@@ -172,7 +172,11 @@ function bandcamp-dl { #{{{
 } #}}}
 # takes in user input of Webtoon Name and creates html file to read it
 function webtoon2html { #{{{
-    FILENAME="$1.html"
+    # Assume that the directory is of the form "C[0-9]{1,4} 'chaptertitle'"
+    chaptername=$(pwd | rev | cut -f 1 -d'/' | rev)
+    manganame=$(pwd | rev | cut -f 2 -d'/' | rev)
+    FILENAME="$manganame"" ""$chaptername"".html"
+    FILENAME=${FILENAME// /_}
     rm -f "$FILENAME"
     echo "<html>" >> $FILENAME
     echo "<body bgcolor=\"#000000\">" >> $FILENAME
@@ -284,13 +288,34 @@ function aquiresongs { #{{{
        albumname=${albumname//_/ }
        artistname=$(echo $PWD | rev | cut -f 3 -d'/' | rev)
        artistname=${artistname//_/ }
-       searchterm="$artistname"" ""$line"
+       # Want to tell if my songlist line has the term "/|\" in it.
+       # If it does, then will store songname as thing before the pattern, 
+       # and the query as everything after it
+       if [[ $line == *"/|\\"* ]]; then
+           songname=$(echo $line | cut -f 1 -d"/")
+           searchterm=$(echo $line | rev | cut -f 1 -d'\' | rev)
+       else
+           songname=$line
+           searchterm="$artistname"" ""$line"
+       fi
        echo $searchterm
        youtube-dl -x --audio-format mp3 ytsearch:"$searchterm"
-       mv *mp3 "$line"".mp3"
-       mid3v2 -a "$artistname" -A "$albumname" -t "$line" -T "$counter""/""$numberofsongs" *mp3
+       mv *mp3 "$songname"".mp3"
+       mid3v2 -a "$artistname" -A "$albumname" -t "$songname" -T "$counter""/""$numberofsongs" *mp3
        mv *mp3 ..
        cd ..
        rm -r temp
    done < songlist.txt
+} #}}}
+# Open the next manga chapter in firefox
+function nextchapter { #{{{
+    # get current chapter number
+    current_folder=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
+    current_number=$(echo $PWD | rev | cut -f 1 -d'/' | rev | egrep -o '[0-9]+|[0-9]+\.[0-9]+')
+    cd ..
+    current_index=$(ls -d */ | grep -n "$current_number" | cut -f 1 -d':' | head -n 1)
+    next_directory=$(ls -d */ | head -n $((current_index+1)) | tail -n 1)
+    cd "$next_directory"
+    webtoon2html
+    firefox *html
 } #}}}
