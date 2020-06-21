@@ -307,15 +307,181 @@ function aquiresongs { #{{{
        rm -r temp
    done < songlist.txt
 } #}}}
+# print battery percentage
+function checkbattery { #{{{
+    cat /sys/class/power_supply/BAT0/capacity
+} #}}}
 # Open the next manga chapter in firefox
-function nextchapter { #{{{
+function nextchapter0 { #{{{
     # get current chapter number
     current_folder=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
-    current_number=$(echo $PWD | rev | cut -f 1 -d'/' | rev | egrep -o '[0-9]+|[0-9]+\.[0-9]+')
+    current_number=$(pwd | rev | cut -f 1 -d'/' | rev | grep -Po '(?<!\.)[0-9]+\.{0,}[0-9]{0,}' | tail -n 1)
+    current_number=$(expr "$current_number" + 0)
+
     cd ..
-    current_index=$(ls -d */ | grep -n "$current_number" | cut -f 1 -d':' | head -n 1)
-    next_directory=$(ls -d */ | head -n $((current_index+1)) | tail -n 1)
-    cd "$next_directory"
-    webtoon2html
-    firefox *html
+    loose_matches=$(ls -d */ | grep -P -- "$((current_number+1))")
+    # If there's only one folder that contains the number I care about
+    if [ $(echo "$loose_matches" |tr -d " \t"| wc -l) = "1" ]; then
+        cd "$loose_matches" && webtoon2html && firefox *html
+        return
+    else
+        echo "Failed to match with loose matching"
+    fi
+
+    # Check for those split with a semicolon
+    candidates=$(ls -d */ | cut -f 1 -d':' | grep -P -- "($current_number|$(($current_number+1)))")
+    candidates=$(echo "$candidates" | grep -Pv -- "$current_number")
+    # If there's only one chapter with a number left of semicolons that's not the current number
+    if [ $(echo "$candidates" | wc -l) = "1" ]; then
+        echo "Matched with splitting on semicolons"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox *html
+        return
+    else
+        echo "Failed to match with semicolon split"
+    fi
+
+    # Check for next chapter with omission of current chapter
+    candidates=$(ls -d */ | grep -P -- "(?<!(\.|[0-9]))($current_number|$((current_number+1)))")
+    candidates=$(echo "$candidates" | grep -Pv -- "$current_number")
+    if [ $(echo "$candidates" | wc -l) = "1" ]; then
+        echo "Matched with omission of current chapter"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox *html
+        return
+    else
+        echo "Failed to match with omission of current chapter"
+    fi
+    
+    # Trying space then number then colon
+    candidates=$(ls -d */ | grep -P -- "\ $((current_number+1))\:")
+    string=$(echo $(echo $candidates | tr -d "[:blank:]"))
+    length=$(echo $string | awk '{print length}')
+
+    if [ $(echo "$candidates" | wc -l) = "1" ] && [ $length -ne 0 ] ; then
+        echo "Matched by trying space then next integer then colon."
+        echo "$candidates"
+        echo "$candidates" | wc -l
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "Failed to match by trying space then next integer then colon."
+    fi
+
+    cd -
+    return
+
+    # Checking with leading space before number
+    candidates=$(ls -d */ | grep -P -- "(?<!(\.|[0-9]))($current_number|$((current_number+1)))")
+    candidates=$(echo "$candidates" | grep -Pv -- "$current_number")
+    candidates=$(echo "$candidates" | grep -P -- "(?<!\.)([0-9]+|[0-9]+\.[0-9]+)")
+    string=$(echo $(echo $candidates | tr -d "[:blank:]"))
+    echo $string
+    length=$(echo $string | awk '{print length}')
+    candidate_numbers=$(echo "$candidates" | grep -Po -- "(?<!\.)([0-9]+|[0-9]+\.[0-9]+)")
+    LowestNumber=$(echo "$candidate_numbers" | sort -n | head -n 1)
+    IndexOfLowestNumber=$(echo "$candidate_numbers" | grep -Pn -- "^$LowestNumber$" | cut -f 1 -d ":")
+    candidates=$(echo "$candidates" | head -$IndexOfLowestNumber | tail -1)
+     if [ $(echo "$candidates" | wc -l) = "1" ]; then
+        echo "Matched with checking leading space before number and sorting split numbers"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "Failed to match with checking leading space before number and sorting split numbers"
+    fi
+
+    # Checking with decimal number split
+    candidates=$(ls -d */ | grep -P -- "(?<!(\.|[0-9]))($current_number|$((current_number+1)))")
+    candidates=$(echo "$candidates" | grep -Pv -- "$current_number")
+    candidates=$(echo "$candidates" | grep -P -- "(?<!\.)([0-9]+|[0-9]+\.[0-9]+)")
+    matchnumbers=$(echo "$candidates" | grep -Po -- "(?<!\.)[0-9]+\.?[0-9]+")
+    candidates=$(paste <(echo "$candidates") <(echo "$matchnumbers"))
+    queryterm=$(echo "$candidates" | cut -f 2 | head -n 1)
+    candidates=$(echo "$candidates" | grep -P -- "$queryterm" | cut -f 1)
+    if [ $(echo "$candidates" | wc -l) = "1" ]; then
+        echo "Matched with checking for decimal splits"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "Failed to match with checking for decimal splits"
+    fi
+
 } #}}}
+# Open the next manga chapter in firefox but it's not broken as fuck
+function nextchapter { #{{{
+    # get current chapter number
+    current_directory=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
+    # New Algorithm for getting the chapter number of a directory
+    # Count the number of numbers in the current_folder. If it's one, that's it. return.
+    # Split on a colon, grab first field, if there's one number in there, that's it. return.
+    
+    got_current_number=0 # if this is zero, it means I haven't successfully read the number
+    number_regex="[0-9]+\.{0,}[0-9]{0,}" # A number made of integers or integers separated by a period
+    numbers_in_directory=$(echo "$current_directory" | grep -Po -- "$number_regex")
+    
+    # if there's only one number in the directory, it must be the chapter number 
+    if [ $(echo "$numbers_in_directory" | wc -l) = 1 ]; then
+        echo "Only one number found in directory name."
+        got_current_number=1
+        current_number=$numbers_in_directory
+    fi
+    # if I didn't get the current number before, then I need cut at colon and look left of it 
+    if [ $got_current_number = 0 ]; then
+        echo "More than one number found in directory."
+        echo "Splitting at colon and only looking at first field"
+        numbers_left_of_colon=$(echo "$current_directory" | cut -f 1 -d':' | grep -Po -- "$number_regex")
+        number_of_numbers_left_of_colon=$(echo "$numbers_left_of_colon" | wc -l)
+        if [ "$number_of_numbers_left_of_colon" = 1 ];then
+            echo "Only one number found left of colon"
+            got_current_number=1
+            current_number=$numbers_left_of_colon
+        fi
+    fi 
+    # multiple numbers left of colon. Focusing on numbers proceeded by words that contain C
+    if [ $got_current_number = 0 ]; then
+        echo "More than one number found left of colon"
+        numbers_sans_v=$(echo $current_directory | cut -f 1 -d":" | grep -Pio -- "\bC\w{0,}\.{0,}\s{0,}$number_regex" | grep -Po "$number_regex")
+        number_of_numbers_sans_v=$(echo "$numbers_sans_v" | wc -l)
+        if [ "$number_of_numbers_sans_v" = 1 ];then
+            echo "Only one number found left of colon not preceeded by a word containing V"
+            got_current_number=1
+            current_number=$numbers_sans_v
+        fi
+    fi
+
+    # Now that I have my current number, I need to look for the next chapter
+    echo "The Current number is $current_number"
+    current_number=$(expr "$current_number" + 0)
+    cd ..
+
+    # Checking for loose match
+    loose_matches=$(ls -d */ | grep -P -- "$((current_number+1))")
+    if [ $(echo "$loose_matches" | wc -l) -eq 1 ] && [ $(echo "$loose_matches" | tr -d "[:blank:]" | awk '{print length}') -ne 0 ]; then
+        echo "Matched with loose matching"
+        cd "$(ls -d */ | grep "$loose_matches")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "did not match with loose matching"
+    fi
+
+    # checking for space then next number
+    candidates=$(ls -d */ | grep -P -- "\s$((current_number+1))")
+    if [ $(echo "$candidates" | wc -l) -eq 1 ] && [ $(echo "$candidates" | tr -d "[:blank:]" | awk '{print length}') -ne 0 ]; then
+        echo "Matched with space then next number"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "Did not match with space then next number"
+    fi
+
+    # checking for space then next number then a delimiter of some kind
+    candidates=$(ls -d */ | grep -P -- "\s$((current_number+1))(\s|\-\:|\/)")
+    if [ $(echo "$candidates" | wc -l) -eq 1 ] && [ $(echo "$candidates" | tr -d "[:blank:]" | awk '{print length}') -ne 0 ]; then
+        echo "Matched with space then number then delimiter"
+        cd "$(ls -d */ | grep "$candidates")" && webtoon2html && firefox $(ls | grep "html")
+        return
+    else
+        echo "Did not match with space then number then delimiter"
+    fi
+
+
+    cd -
+}
