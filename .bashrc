@@ -158,11 +158,6 @@ function pdfchapter { #{{{
     rm *.jpg
     convert *.png chapter.pdf
 } #}}}
-# puts my mdex password in my clipboard
-function mdexpass { #{{{
-    pass=$'de89Abq3Tp7SkBaD'
-    echo $pass | xclip
-} #}}}
 # runs custom youtube-dl on bancamp album links
 function bandcamp-dl { #{{{
     arg=$1
@@ -403,10 +398,9 @@ function nextchapter0 { #{{{
     else
         echo "Failed to match with checking for decimal splits"
     fi
-
 } #}}}
 # Open the next manga chapter in firefox but it's not broken as fuck
-function nextchapter { #{{{
+function nextchapter1 { #{{{
     # get current chapter number
     current_directory=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
     # New Algorithm for getting the chapter number of a directory
@@ -484,4 +478,4 @@ function nextchapter { #{{{
 
 
     cd -
-}
+} # }}}
