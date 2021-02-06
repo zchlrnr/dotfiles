@@ -140,6 +140,7 @@ ex ()
 # User created aliases
 alias xclip="xclip -selection c"
 alias dotfiles='/usr/bin/git --git-dir $HOME/.dotfiles/ --work-tree=$HOME'
+alias dragon='/home/goddard/Programs/dragon/./dragon'
 
 # User created functions
 rmd(){
@@ -193,7 +194,7 @@ function webtoon2html { #{{{
     echo "</style>" >> $FILENAME
     echo "</html>" >> $FILENAME
 } #}}}
-# Downscales a standardanime mkv to the 960:540 retaining subtitles
+# Downscales a standard anime mkv to the 960:540 retaining subtitles
 function downscale_anime { #{{{
     filename_start=$(basename -- "$1")
     filename_prefix="${filename_start%.*}"
@@ -219,6 +220,7 @@ function mid3v2i { #{{{
     fi
 
     echo Enter the name of the album
+    album_guess=${album_guess//_/ }
     echo [If it\'s $album_guess"," leave blank]
     read album_in
     if [ ""="$album_in" ]
@@ -229,8 +231,8 @@ function mid3v2i { #{{{
     fi
 
     echo Enter the name of the song
-    songname_guess=`echo $1 | cut -f 1 -d "."`
-    echo [If it\'s $songname_guess"," leave blank]
+    songname_guess=`echo "$1" | rev | cut -f 2 -d "." | rev`
+    echo [If it\'s "$songname_guess""," leave blank]
     read songname_in
     if [ ""="$songname_in" ]
     then 
@@ -249,7 +251,7 @@ function mid3v2i { #{{{
     then
         echo renaming song
     else
-        mv $1 $newsongname
+        mv "$1" "$newsongname"
     fi
 
     mid3v2 -a "$artist" -A "$album" -t "$songname" -T "$track_number_fraction" "$songname"".mp3"
@@ -269,6 +271,20 @@ function wikisearcher { #{{{
         return
     fi
     mv data.html wikiquery.html 
+} #}}}
+# find a bands discography, organized, based on directory location
+function discogsearch() { #{{{
+    a=$PWD
+    b=${a//_/+} # remove spaces
+    # split at last slash to get artist name
+    c=$(echo $b | rev | cut -d'/' -f1 | rev)
+    req="https://www.discogs.com/search/?q=$c&type=all"
+    w3m -dump "$req" > data.html
+    # word "Exploring" marks the start, follwed by search term space delimited
+    d=${c//+/ } # space delimited query term
+    startline=$(cat data.html | grep 'Exploring' -n | cut -d':' -f1)
+    w3m -dump -o display_link_number=1 "$req" > test1.txt
+    w3m -dump -o display_link=1 "$req" > test2.txt
 } #}}}
 # Download songs in an album, and tag them with mid3v2
 function aquiresongs { #{{{
@@ -294,7 +310,8 @@ function aquiresongs { #{{{
            searchterm="$artistname"" ""$line"
        fi
        echo $searchterm
-       youtube-dl -x --audio-format mp3 ytsearch:"$searchterm"
+       #youtube-dl -x --audio-format mp3 --sleep-interval 300 ytsearch:"$searchterm"
+       youtube-dl -qx --audio-format mp3 --sleep-interval 1 ytsearch:"$searchterm"
        mv *mp3 "$songname"".mp3"
        mid3v2 -a "$artistname" -A "$albumname" -t "$songname" -T "$counter""/""$numberofsongs" *mp3
        mv *mp3 ..
@@ -306,8 +323,147 @@ function aquiresongs { #{{{
 function checkbattery { #{{{
     cat /sys/class/power_supply/BAT0/capacity
 } #}}}
-# Open the next manga chapter in firefox
-function nextchapter0 { #{{{
+# Open the next manga chapter in firefox, but it's got a TUI
+function nextchapter { #{{{
+    # Logging current directory for display
+    CurrentDirectory=$PWD
+
+    # Travelling backwards one directory
+    cd ..
+    # Initializing Variables {{{
+    # getting size of current terminal window
+    columns=$(tput cols)
+    rows=$(tput lines)
+
+    # calibrating escape parameter
+    escape_parameter="false";
+
+    # Describing line that sits at the top of the screen
+    InstructionPhrase="Press # for Edit Mode, % for Selection Mode,or + to Refresh With More Candidates"
+
+    # Setting the initial mode to edit mode rather than selection mode
+    Mode="Edit"
+
+    # Initializing the query string
+    QueryString=""
+
+    # Initializing the log string
+    LogString=""
+
+    # Initializing the number of displayed directories
+    NumberDisplayed=10
+
+    # Initializing the file list query with all files in current directory
+    FilesInQuery=$(ls -d */ | grep "$QueryString" | head -n $NumberDisplayed)
+
+    # Done Initializing Variables }}}
+
+    # Checking for valid input
+    N_results=$(echo "$FilesInQuery" | wc -l)
+
+    # If only one result possible, no directories visible from here
+    if [ "$N_results" = 1 ]; then
+        printf "Not enough directories to enter from this location\n"
+        echo "$FilesInQuery"
+        escape_parameter="true"
+    fi
+
+    # initiating primary loop
+    while [ "$escape_parameter" = "false" ]; do
+        # initializing to blank screen
+        clear
+
+        # Refreshing the file list query with all files in current directory
+        FilesInQuery=$(ls -d */ | grep "$QueryString" | head -n $NumberDisplayed)
+
+        # printing instruction phrase
+        echo "$InstructionPhrase"
+        # Printing knowledge of how to refresh query
+        echo "If in edit mode, press ~ to refresh search"
+        # informing user what the current mode is
+        echo "Current mode is $Mode mode"
+        # informing user what the current search query is
+        echo "Query:\"$QueryString\""
+        # informing the user how many matches they have
+        N_results=$(echo "$FilesInQuery" | wc -l)
+        echo "Number Of results:$N_results"
+        # providing error message room for communications with the user
+        echo "Log Output>:$LogString"
+        # informing the user of the initial directory they were in
+        echo "Current Directory>:$CurrentDirectory"
+        # displaying clear delimiting line horizontally across screen
+        for (( c=1; c<=$columns; c++ ))
+        do
+            printf "-"
+        done
+        # displaying first 10 files matching query
+        echo "$FilesInQuery"
+
+        # reading in one keypress from the user, silently
+        IFS="" read -rsn1 input
+
+        # If # pressed, change to edit mode
+        if [ "$input" = "#" ]; then
+            Mode="Edit"
+            continue
+        fi
+        # If % pressed, change to selection mode
+        if [ "$input" = "%" ]; then
+            Mode="Selection"
+            continue
+        fi
+        # If + pressed, add one to the number of displayed options
+        if [ "$input" = "+" ]; then
+            NumberDisplayed="$(($NumberDisplayed+1))"
+            continue
+        fi
+
+        # At this point in the code, the Mode is set.
+        # Forking conditional into the two modes
+        if [ "$Mode" = "Selection" ]; then
+            #If character read is empty, submit
+            if [[ "$input" = "" ]]; then
+                escape_parameter="true"        
+                TargetDirectory=$(echo "$FilesInQuery" | head -n 1|tr -d '\r')
+                cd "$TargetDirectory"
+                continue
+            fi
+            # if character read is a number, narrow down to that entry in FilesInQuery
+            if [[ "$input" =~ [0-9] ]]; then
+                FilesInQuery=$(echo "$FilesInQuery" | head -n "$input")
+                FilesInQuery=$(echo "$FilesInQuery" | tail -n 1)
+                continue
+            fi
+        else # If current mode is "Edit"
+            # If character pressed is "~", refresh FilesInQuery and QueryString
+            if [[ "$input" = "~" ]]; then
+                NumberDisplayed=10
+                FilesInQuery=$(ls -d */ | head -n "$NumberDisplayed")
+                QueryString=""
+                continue
+            fi
+            # If character pressed was empty
+            if [[ "$input" = "" ]]; then
+                # If length of FilesInQuery is 1
+                NumFilesInQuery=$(echo "$FilesInQuery" | wc -l)
+                if [[ "$NumFilesInQuery" == 1 ]]; then
+                    escape_parameter="true"        
+                    TargetDirectory=$(echo "$FilesInQuery" | head -n 1|tr -d '\r')
+                    cd "$TargetDirectory"
+                    continue
+                fi
+            fi
+            # Append typed character into string
+            QueryString="$QueryString$input"
+            FilesInQuery=$(ls -d */ | grep "$QueryString" | head -n $NumberDisplayed)
+            continue
+        fi
+    done
+    webtoon2html
+    firefox *html
+} #}}}
+# Open the next manga chapter in firefox... it brokey
+function nextchapter1 { #{{{
     # get current chapter number
     current_folder=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
     current_number=$(pwd | rev | cut -f 1 -d'/' | rev | grep -Po '(?<!\.)[0-9]+\.{0,}[0-9]{0,}' | tail -n 1)
@@ -400,7 +556,7 @@ function nextchapter0 { #{{{
     fi
 } #}}}
 # Open the next manga chapter in firefox but it's not broken as fuck
-function nextchapter1 { #{{{
+function nextchapter2 { #{{{
     # get current chapter number
     current_directory=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
     # New Algorithm for getting the chapter number of a directory
@@ -475,7 +631,89 @@ function nextchapter1 { #{{{
     else
         echo "Did not match with space then number then delimiter"
     fi
-
-
     cd -
+} # }}}
+# Open the next manga chapter in firefox but it's interactive on failure
+function nextchapter3 { # {{{
+    current_directory=$(echo $PWD | rev | cut -f 1 -d'/' | rev)
+    current_numbers=$(echo $current_directory | rev | cut -f 1 -d'/' | rev | grep -Po '[0-9]+\.{0,}[0-9]{0,}')
+    number_of_numbers=$(echo "$current_numbers" | wc -l)
+    # Getting current chapter number
+    if [[ $number_of_numbers -ne 1 ]] ; then
+        echo "There's more than one number in the current chapter name"
+        echo $current_directory
+        if [[ $current_directory == *"Chapter"* ]] ; then
+            echo "directory contains word 'Chapter'"
+            start_of_word_chapter=$(echo $current_directory | grep -Pno "Chapter" | cut -d':' -f 1) 
+            end_of_word_chapter=$((start_of_word_chapter+7))
+            current_number=$(echo $current_directory | cut -c$end_of_word_chapter- | grep -Po "[0-9]+\.{0,}[0-9]{0,}" | head -n 1)
+        elif [[ $current_directory == *"chapter"* ]]; then
+            echo "directory contains word 'chapter'"
+            echo "Not yet written this case."
+            return
+        fi
+    else
+        echo "there's only one number in the current chapter name"
+        current_number=$current_numbers
+    fi
+    cd ..
+    clear
+    # think I need to check if current number is a decimal? It's complaining at me about it
+    if [[ $current_number == *"."*  ]]; then
+        ls -d */ | grep -P "$current_number"
+    fi
+
+
+    candidates=$(ls -d */ | grep -P "$current_number|$(($current_number+1))|$current_directory|$(echo $current_number | cut -d'.' -f 1)")
+    candidates=$(echo "$candidates" | grep -v "$current_directory")
+    if [[ $(echo $candidates | wc -l) == 1 ]]; then
+        cd "$candidates"
+    fi
+} # }}}
+# An interim hack replacement for ytsearch
+function ytsearch(){ #{{{
+    query=$1    
+    query=${query// /+}
+    string1="'"
+    string2="\'"
+    query=${query/$string1/$string2}
+    echo "from youtube_search import YoutubeSearch" >> execution.py
+    echo "string = '"$query"'" >> execution.py
+    echo "results = YoutubeSearch(string,max_results=1).to_dict()" >> execution.py
+    echo "for video in results:" >> execution.py
+    echo "    data={};" >> execution.py
+    echo "    data['href'] = video['url_suffix'];" >> execution.py
+    echo " " >> execution.py
+    echo "link = 'https://www.youtube.com/' + data['href']" >> execution.py
+    echo "print(link)" >> execution.py
+    python execution.py
+    #rm execution.py
+} #}}}
+# tag songs in album
+function tag_songs_in_album(){ # {{{
+    files=$(ls *mp3)
+    albumname=$(echo $PWD | rev | cut -f 2 -d'/' | rev)
+    albumname=${albumname//_/ }
+    artistname=$(echo $PWD | rev | cut -f 3 -d'/' | rev)
+    artistname=${artistname//_/ }
+
+    # need songlist and need list of mp3s in current directory
+    mp3s_here=$(ls *mp3)
+    num_of_files=$(echo "$mp3s_here" | wc -l)
+
+    # if number of songs in songlist are the same, good
+    num_of_songs_should_have=$(cat "songlist.txt" | wc -l)
+    if  [ $num_of_songs_should_have -eq $num_of_files ]; then
+        echo "All of the songs are accounted for."
+    else
+        echo "Wrong number of songs gotten."
+        return;
+    fi
+    # for each file, rename it, then tag it
+    while IFS= read -r line; do
+        songname=$line
+
+    done < songlist.txt
+
+    #mid3v2 -a "$artistname" -A "$albumname" -t "$songname" -T "$counter""/""$numberofsongs" *mp3
 } # }}}

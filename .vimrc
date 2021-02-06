@@ -8,6 +8,7 @@ set autoindent
 set foldcolumn=3
 set foldmethod=marker
 set rnu
+set nu
 set clipboard=unnamed
 set shiftwidth=4
 set tabstop=4
@@ -16,9 +17,12 @@ set history=500
 set showcmd
 let g:markdown_folding=1
 syntax enable
+set textwidth=80
 
 autocmd FileType matlab setlocal textwidth=100
 autocmd FileType markdown setlocal textwidth=80
+autocmd FileType python setlocal textwidth=100
+autocmd FileType python setlocal colorcolumn=100
 
 set rtp+=~/.vim/bundle/Vundle.vim
 call vundle#begin()
