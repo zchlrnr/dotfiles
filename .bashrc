@@ -95,6 +95,7 @@ alias df='df -h'                          # human-readable sizes
 alias free='free -m'                      # show sizes in MB
 alias np='nano -w PKGBUILD'
 alias more=less
+alias mystran='~/Documents/learning_mystran/MYSTRAN/Binaries/mystran'
 
 xhost +local:root > /dev/null 2>&1
 
@@ -717,3 +718,7 @@ function tag_songs_in_album(){ # {{{
 
     #mid3v2 -a "$artistname" -A "$albumname" -t "$songname" -T "$counter""/""$numberofsongs" *mp3
 } # }}}
+# turns on weebshit at a reasonable volume
+function weebshit(){ #{{{
+    mpv --volume=30 https://listen.moe/stream
+} #}}}
