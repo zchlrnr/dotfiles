@@ -95,7 +95,7 @@ alias df='df -h'                          # human-readable sizes
 alias free='free -m'                      # show sizes in MB
 alias np='nano -w PKGBUILD'
 alias more=less
-alias mystran='~/Documents/learning_mystran/MYSTRAN/Binaries/mystran'
+# alias mystran='~/Documents/learning_mystran/MYSTRAN/Binaries/mystran'
 
 xhost +local:root > /dev/null 2>&1
 
@@ -110,6 +110,9 @@ shopt -s checkwinsize
 shopt -s expand_aliases
 
 # export QT_SELECT=4
+export CML_INSTALLDIR='C:\Program Files\Comlab\nast_core'
+export CML_RCFILE='C:\Program Files\Comlab\nast_core\rc\nast.rc'
+export CML_RFDIR='C:\Program Files\Comlab\nast_core\rf'
 
 # Enable history appending instead of overwriting.  #139609
 shopt -s histappend
@@ -173,13 +176,31 @@ function webtoon2html { #{{{
     chaptername=$(pwd | rev | cut -f 1 -d'/' | rev)
     manganame=$(pwd | rev | cut -f 2 -d'/' | rev)
     FILENAME="$manganame"" ""$chaptername"".html"
+    # Replace spaces with underscores
     FILENAME=${FILENAME// /_}
+    # Check if there's a question mark. If there is, replace it with nothing.
+    FILENAME=${FILENAME//"?"/}
+    # put pngs in candidates file
+    png_count=`ls -1 *.png 2>/dev/null | wc -l`
+    if [ "$png_count" != 0 ]
+    then
+        ls *.png > candidates.txt
+    fi
+    # put jpgs in candidates file
+    jpg_count=`ls -1 *.jpg 2>/dev/null | wc -l`
+    if [ "$jpg_count" != 0 ]
+    then
+        ls *.jpg >> candidates.txt
+    fi
+    candidates="$(cat "candidates.txt" | sort -h)"
+    rm candidates.txt
+
     rm -f "$FILENAME"
     echo "<html>" >> $FILENAME
     echo "<body bgcolor=\"#000000\">" >> $FILENAME
     echo "<div id=\"container\">" >> $FILENAME
     echo "    <div id=\"floated-imgs\">" >> $FILENAME
-    for filename in *.{png,jpg}; do
+    for filename in $candidates; do
         echo "        <center><img src=\"$filename\"></center>" >> $FILENAME
     done
     echo "    </div>" >> $FILENAME
@@ -403,21 +424,20 @@ function nextchapter { #{{{
         # reading in one keypress from the user, silently
         IFS="" read -rsn1 input
 
-        # If # pressed, change to edit mode
+        # Checking for mode change buttons {{{
         if [ "$input" = "#" ]; then
+            # If # pressed, change to edit mode
             Mode="Edit"
             continue
-        fi
-        # If % pressed, change to selection mode
-        if [ "$input" = "%" ]; then
+        elif [ "$input" = "%" ]; then
+            # If % pressed, change to selection mode
             Mode="Selection"
             continue
-        fi
-        # If + pressed, add one to the number of displayed options
-        if [ "$input" = "+" ]; then
+        elif [ "$input" = "+" ]; then
+            # If + pressed, add one to the number of displayed options
             NumberDisplayed="$(($NumberDisplayed+1))"
             continue
-        fi
+        fi # }}}
 
         # At this point in the code, the Mode is set.
         # Forking conditional into the two modes
@@ -454,8 +474,13 @@ function nextchapter { #{{{
                     continue
                 fi
             fi
+            # Checking if backspace character is pressed
+            if [[ "$input" == $'\177' ]]; then
+                QueryString=${QueryString%?}
+            else
+                QueryString="$QueryString$input"
+            fi
             # Append typed character into string
-            QueryString="$QueryString$input"
             FilesInQuery=$(ls -d */ | grep "$QueryString" | head -n $NumberDisplayed)
             continue
         fi
